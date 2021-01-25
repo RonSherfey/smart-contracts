@@ -50,6 +50,7 @@
     "hardhat": "^2.0.7",
     "mocha": "^7.1.2",
     "nodemon": "^2.0.2",
+    "solidity-coverage": "^0.7.14",
     "truffle-flattener": "github:shark0der/truffle-flattener",
     "ts-generator": "^0.1.1",
     "typechain": "^4.0.0",
