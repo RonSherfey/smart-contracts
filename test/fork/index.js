@@ -5,4 +5,6 @@ describe('PooledStaking fork tests', function () {
 
   // require('./price-function');
   require('./assessment-yearn-05-02-2021');
+
+  // bla bla
 });

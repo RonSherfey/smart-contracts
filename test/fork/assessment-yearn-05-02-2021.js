@@ -38,6 +38,7 @@ const TwapOracle = artifacts.require('TwapOracle');
 const QuotationData = artifacts.require('QuotationData');
 const ClaimsData = artifacts.require('ClaimsData');
 const PooledStaking = artifacts.require('PooledStaking');
+const TokenController = artifacts.require('TokenController');
 
 const Address = {
   ETH: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
@@ -68,6 +69,8 @@ const unlock = async member => hardhatRequest({ method: 'hardhat_impersonateAcco
 
 const claimIds = [72, 73, 74, 75];
 
+const whales = ['0x25783b67b5e29c48449163db19842b8531fdde43'];
+
 describe.only('yearn assessments', function () {
 
   this.timeout(0);
@@ -90,6 +93,7 @@ describe.only('yearn assessments', function () {
     const master = await NXMaster.at(masterAddress);
     const dai = await ERC20.at(Address.DAI);
     const pooledStaking = await PooledStaking.at(getAddressByCode('PS'));
+    const tokenController = await TokenController.at(getAddressByCode('TC'));
 
     this.masterAddress = masterAddress;
     this.master = master;
@@ -106,6 +110,7 @@ describe.only('yearn assessments', function () {
     this.master = master;
     this.dai = dai;
     this.pooledStaking = pooledStaking;
+    this.tokenController = tokenController;
   });
 
   it('fetches board members and funds accounts', async function () {
@@ -113,7 +118,7 @@ describe.only('yearn assessments', function () {
     const { memberArray: boardMembers } = await this.memberRoles.members('1');
     const voters = boardMembers.slice(0, 5);
 
-    for (const member of [...voters, Address.NXMHOLDER]) {
+    for (const member of [...voters, Address.NXMHOLDER, ...whales]) {
       await fund(member);
       await unlock(member);
     }
@@ -121,9 +126,22 @@ describe.only('yearn assessments', function () {
     this.voters = voters;
   });
 
-  it.skip('assess claim 76', async function () {
+  it('lock voting time', async function () {
+    const { tokenController, token } = this;
 
-    const { quotationData, claimsData, claims, master, voters, dai } = this;
+    for (const whale of whales) {
+      console.log(`Locking CA for ${whale}`);
+      const tokenBalance = await token.balanceOf(whale);
+      const lockTokens = tokenBalance;
+      const validity = 365 * 24 * 60 * 60;
+      await tokenController.lock(hex('CLA'), toBN(lockTokens), toBN(validity), { from: whale });
+    }
+
+  });
+
+  it('assess claim 76', async function () {
+
+    const { quotationData, claimsData, claims, master, voters, dai, pooledStaking } = this;
 
     const claimId = 76;
 
@@ -136,10 +154,10 @@ describe.only('yearn assessments', function () {
     const memberAddress = cover._memberAddress;
     const sumAssuredWei = ether(cover._sumAssured.toString());
 
-    await claims.submitCAVote(claimId, '1', { from: voters[1] });
+    await claims.submitCAVote(claimId, '1', { from: whales[0] });
 
-    const maxVotingTime = await claimsData.maxVotingTime();
-    await time.increase(maxVotingTime.addn(1));
+    const minVotingTime = await claimsData.minVotingTime();
+    await time.increase(minVotingTime.addn(1));
 
     const voteStatusAfter = await claims.checkVoteClosing(claimId);
     console.log({
@@ -157,9 +175,14 @@ describe.only('yearn assessments', function () {
 
     const balanceAfter = await dai.balanceOf(memberAddress);
     assert(balanceAfter.sub(balanceBefore), sumAssuredWei.toString());
+
+    const burn = await pooledStaking.burn();
+    console.log({
+      burnAmount: burn.amount.toString(),
+    });
   });
 
-  it('assess claim 72', async function () {
+  it.skip('assess claim 72', async function () {
     const { quotationData, claimsData, claims, master, voters, token, pooledStaking } = this;
 
     const minVotingTime = await claimsData.minVotingTime();
