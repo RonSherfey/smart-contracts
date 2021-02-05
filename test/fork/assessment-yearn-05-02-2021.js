@@ -87,8 +87,10 @@ describe.only('NXM sells and buys', function () {
     const quotationData = await QuotationData.at(getAddressByCode('QD'));
     const claimsData = await ClaimsData.at(getAddressByCode('CD'));
     const claims = await Claims.at(getAddressByCode('CL'));
+    const master = await NXMaster.at(masterAddress);
 
     this.masterAddress = masterAddress;
+    this.master = master;
     this.token = token;
     this.memberRoles = memberRoles;
     this.governance = governance;
@@ -99,6 +101,7 @@ describe.only('NXM sells and buys', function () {
     this.quotationData = quotationData;
     this.claimsData = claimsData;
     this.claims = claims;
+    this.master = master;
   });
 
   it('fetches board members and funds accounts', async function () {
@@ -115,15 +118,47 @@ describe.only('NXM sells and buys', function () {
   });
 
   it('assess claim 72', async function () {
-    const { quotationData, claimsData, claims } = this;
+    const { quotationData, claimsData, claims, master, voters } = this;
 
     const coverHolder = '';
-    const voter1 = '';
 
     const claimId = 72;
 
     const data = await claimsData.getClaim(claimId);
+
     console.log(data);
+
+    const cover = await quotationData.getCoverDetailsByCoverID1(data.coverId);
+    console.log({
+      sumAssured: cover._sumAssured.toString(),
+      _memberAddress: cover._memberAddress.toString(),
+    });
+    const memberAddress = cover._memberAddress;
+    const sumAssuredWei = ether(cover._sumAssured.toString());
+
+    const balanceBefore = await web3.eth.getBalance(memberAddress);
+
+    const minVotingTime = await claimsData.minVotingTime();
+    const maxVotingTime = await claimsData.maxVotingTime();
+    await time.increase(maxVotingTime.addn(1));
+    //     await claims.submitCAVote(claimId, '1', { from: voter1 });
+
+    const voteStatusAfter = await claims.checkVoteClosing(claimId);
+    console.log({
+      voteStatusAfter: voteStatusAfter.toString(),
+    });
+    assert(voteStatusAfter.toString(), '-1', 'voting should be closed');
+
+    await master.closeClaim(claimId, {
+      from: voters[0],
+    }); // trigger changeClaimStatus
+
+    const { statno: claimStatus } = await claimsData.getClaimStatusNumber(claimId);
+    assert.strictEqual(claimStatus.toNumber(), 14, 'claim status should be 14 (accepted, payout done)');
+
+    const balanceAfter = await web3.eth.getBalance(memberAddress);
+
+    assert(balanceAfter.sub(balanceBefore), sumAssuredWei.toString());
 
     // const [coverId] = await quotationData.getAllCoversOfUser(coverHolder);
     // // await claims.submitClaim(coverId, { from: coverHolder });
