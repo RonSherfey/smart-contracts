@@ -38,6 +38,7 @@ const SwapAgent = artifacts.require('SwapAgent');
 const TwapOracle = artifacts.require('TwapOracle');
 const QuotationData = artifacts.require('QuotationData');
 const ClaimsData = artifacts.require('ClaimsData');
+const PooledStaking = artifacts.require('PooledStaking');
 
 const Address = {
   ETH: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
@@ -68,7 +69,7 @@ const unlock = async member => hardhatRequest({ method: 'hardhat_impersonateAcco
 
 const claimIds = [72, 73, 74, 75];
 
-describe.only('NXM sells and buys', function () {
+describe.only('yearn assessments', function () {
 
   this.timeout(0);
 
@@ -88,6 +89,8 @@ describe.only('NXM sells and buys', function () {
     const claimsData = await ClaimsData.at(getAddressByCode('CD'));
     const claims = await Claims.at(getAddressByCode('CL'));
     const master = await NXMaster.at(masterAddress);
+    const dai = await ERC20.at(Address.DAI);
+    const pooledStaking = await PooledStaking.at(getAddressByCode('PS'));
 
     this.masterAddress = masterAddress;
     this.master = master;
@@ -102,6 +105,8 @@ describe.only('NXM sells and buys', function () {
     this.claimsData = claimsData;
     this.claims = claims;
     this.master = master;
+    this.dai = dai;
+    this.pooledStaking = pooledStaking;
   });
 
   it('fetches board members and funds accounts', async function () {
@@ -117,17 +122,13 @@ describe.only('NXM sells and buys', function () {
     this.voters = voters;
   });
 
-  it('assess claim 72', async function () {
-    const { quotationData, claimsData, claims, master, voters } = this;
+  it.skip('assess claim 76', async function () {
 
-    const coverHolder = '';
+    const { quotationData, claimsData, claims, master, voters, dai } = this;
 
-    const claimId = 72;
+    const claimId = 76;
 
     const data = await claimsData.getClaim(claimId);
-
-    console.log(data);
-
     const cover = await quotationData.getCoverDetailsByCoverID1(data.coverId);
     console.log({
       sumAssured: cover._sumAssured.toString(),
@@ -136,12 +137,10 @@ describe.only('NXM sells and buys', function () {
     const memberAddress = cover._memberAddress;
     const sumAssuredWei = ether(cover._sumAssured.toString());
 
-    const balanceBefore = await web3.eth.getBalance(memberAddress);
+    await claims.submitCAVote(claimId, '1', { from: voters[1] });
 
-    const minVotingTime = await claimsData.minVotingTime();
     const maxVotingTime = await claimsData.maxVotingTime();
     await time.increase(maxVotingTime.addn(1));
-    //     await claims.submitCAVote(claimId, '1', { from: voter1 });
 
     const voteStatusAfter = await claims.checkVoteClosing(claimId);
     console.log({
@@ -149,9 +148,52 @@ describe.only('NXM sells and buys', function () {
     });
     assert(voteStatusAfter.toString(), '-1', 'voting should be closed');
 
+    const balanceBefore = await dai.balanceOf(memberAddress);
     await master.closeClaim(claimId, {
       from: voters[0],
     }); // trigger changeClaimStatus
+
+    const { statno: claimStatus } = await claimsData.getClaimStatusNumber(claimId);
+    assert.strictEqual(claimStatus.toNumber(), 14, 'claim status should be 14 (accepted, payout done)');
+
+    const balanceAfter = await dai.balanceOf(memberAddress);
+    assert(balanceAfter.sub(balanceBefore), sumAssuredWei.toString());
+  });
+
+  it('assess claim 72', async function () {
+    const { quotationData, claimsData, claims, master, voters, token, pooledStaking } = this;
+
+    const minVotingTime = await claimsData.minVotingTime();
+    const maxVotingTime = await claimsData.maxVotingTime();
+    await time.increase(maxVotingTime.addn(1));
+    const claimId = 72;
+
+    const data = await claimsData.getClaim(claimId);
+    const cover = await quotationData.getCoverDetailsByCoverID1(data.coverId);
+    console.log({
+      sumAssured: cover._sumAssured.toString(),
+      _memberAddress: cover._memberAddress.toString(),
+    });
+    const memberAddress = cover._memberAddress;
+    const sumAssuredWei = ether(cover._sumAssured.toString());
+
+    const voteStatusAfter = await claims.checkVoteClosing(claimId);
+    console.log({
+      voteStatusAfter: voteStatusAfter.toString(),
+    });
+    assert(voteStatusAfter.toString(), '-1', 'voting should be closed');
+
+    const balanceBefore = await web3.eth.getBalance(memberAddress);
+    const psNXMBalanceBefore = await token.balanceOf(pooledStaking.address);
+    const tx = await master.closeClaim(claimId, {
+      from: voters[0],
+    }); // trigger changeClaimStatus
+    console.log(tx);
+
+    const burn = await pooledStaking.burn();
+    console.log({
+      burnAmount: burn.amount.toString(),
+    });
 
     const { statno: claimStatus } = await claimsData.getClaimStatusNumber(claimId);
     assert.strictEqual(claimStatus.toNumber(), 14, 'claim status should be 14 (accepted, payout done)');
@@ -160,19 +202,20 @@ describe.only('NXM sells and buys', function () {
 
     assert(balanceAfter.sub(balanceBefore), sumAssuredWei.toString());
 
-    // const [coverId] = await quotationData.getAllCoversOfUser(coverHolder);
-    // // await claims.submitClaim(coverId, { from: coverHolder });
-    //
-    // const minVotingTime = await claimsData.minVotingTime();
-    // await time.increase(minVotingTime.addn(1));
-    // await claims.submitCAVote(claimId, '1', { from: voter1 });
-    //
-    // const voteStatusAfter = await claims.checkVoteClosing(claimId);
-    // assert(voteStatusAfter.eqn(-1), 'voting should be closed');
-    //
-    // const { statno: claimStatus } = await claimsData.getClaimStatusNumber(claimId);
-    // assert.strictEqual(claimStatus.toNumber(), 14, 'claim status should be 14 (accepted, payout done)');
-    //
-    // const balanceAfter = toBN(await web3.eth.getBalance(payoutAddress));
+    await pooledStaking.processPendingActions('1000', {
+      from: voters[0],
+    });
+
+    await pooledStaking.processPendingActions('1000', {
+      from: voters[0],
+    });
+
+    const psNXMBalanceAfter = await token.balanceOf(pooledStaking.address);
+
+    const amountBurned = psNXMBalanceAfter.sub(psNXMBalanceBefore);
+    console.log({
+      amountBurned: amountBurned.toString(),
+    });
+
   });
 });
