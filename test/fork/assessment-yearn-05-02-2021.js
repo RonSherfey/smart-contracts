@@ -4,9 +4,8 @@ const { ether, expectRevert, time } = require('@openzeppelin/test-helpers');
 const Decimal = require('decimal.js');
 
 const { submitGovernanceProposal } = require('./utils');
-const { hex } = require('../utils').helpers;
+const { hex, logEvents } = require('../utils').helpers;
 const { ProposalCategory, Role } = require('../utils').constants;
-
 const {
   toDecimal,
   calculateRelativeError,
@@ -176,6 +175,7 @@ describe.only('yearn assessments', function () {
     });
     const memberAddress = cover._memberAddress;
     const sumAssuredWei = ether(cover._sumAssured.toString());
+    const contractAddress = cover._scAddress;
 
     const voteStatusAfter = await claims.checkVoteClosing(claimId);
     console.log({
@@ -184,6 +184,17 @@ describe.only('yearn assessments', function () {
     assert(voteStatusAfter.toString(), '-1', 'voting should be closed');
 
     const balanceBefore = await web3.eth.getBalance(memberAddress);
+
+    let hasActions = true;
+    while (hasActions) {
+      console.log('processPendingActions...');
+      const tx2 = await pooledStaking.processPendingActions('1000', {
+        from: voters[0],
+      });
+
+      hasActions = await pooledStaking.hasPendingActions();
+    }
+    console.log('closeClaim...');
     const tx = await master.closeClaim(claimId, {
       from: voters[0],
     }); // trigger changeClaimStatus
@@ -203,22 +214,41 @@ describe.only('yearn assessments', function () {
 
     const psNXMBalanceBefore = await token.balanceOf(pooledStaking.address);
 
-    await pooledStaking.processPendingActions('1000', {
+    const contractStakeBefore = await pooledStaking.contractStake(contractAddress);
+
+    const tx1 = await pooledStaking.processPendingActions('1000', {
       from: voters[0],
     });
 
-    await pooledStaking.processPendingActions('1000', {
+    const hasPendingBurnsMidway = await pooledStaking.hasPendingBurns();
+    console.log({
+      hasPendingBurnsMidway,
+    });
+
+    const tx2 = await pooledStaking.processPendingActions('1000', {
       from: voters[0],
     });
 
     const hasPendingBurns = await pooledStaking.hasPendingBurns();
+    const hasPendingActions = await pooledStaking.hasPendingActions();
+    console.log({
+      hasPendingBurns,
+      hasPendingActions,
+    });
+
+    logEvents(tx1);
+    logEvents(tx2);
+
     assert.equal(hasPendingBurns, false, 'still has pending burns.');
 
+    const contractStakeAfter = await pooledStaking.contractStake(contractAddress);
     const psNXMBalanceAfter = await token.balanceOf(pooledStaking.address);
 
-    const amountBurned = psNXMBalanceAfter.sub(psNXMBalanceBefore);
+    const amountBurned = psNXMBalanceBefore.sub(psNXMBalanceAfter);
+    const contractStakeDiff = contractStakeBefore.sub(contractStakeAfter);
     console.log({
       amountBurned: amountBurned.toString(),
+      contractStakeDiff: contractStakeDiff.toString(),
     });
 
   });
