@@ -184,7 +184,6 @@ describe.only('yearn assessments', function () {
     assert(voteStatusAfter.toString(), '-1', 'voting should be closed');
 
     const balanceBefore = await web3.eth.getBalance(memberAddress);
-    const psNXMBalanceBefore = await token.balanceOf(pooledStaking.address);
     const tx = await master.closeClaim(claimId, {
       from: voters[0],
     }); // trigger changeClaimStatus
@@ -201,6 +200,8 @@ describe.only('yearn assessments', function () {
     const balanceAfter = await web3.eth.getBalance(memberAddress);
 
     assert(balanceAfter.sub(balanceBefore), sumAssuredWei.toString());
+
+    const psNXMBalanceBefore = await token.balanceOf(pooledStaking.address);
 
     await pooledStaking.processPendingActions('1000', {
       from: voters[0],
