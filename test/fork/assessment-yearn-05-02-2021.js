@@ -211,6 +211,9 @@ describe.only('yearn assessments', function () {
       from: voters[0],
     });
 
+    const hasPendingBurns = await pooledStaking.hasPendingBurns();
+    assert.equal(hasPendingBurns, false, 'still has pending burns.');
+
     const psNXMBalanceAfter = await token.balanceOf(pooledStaking.address);
 
     const amountBurned = psNXMBalanceAfter.sub(psNXMBalanceBefore);
