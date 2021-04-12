@@ -20,7 +20,7 @@
   },
   "homepage": "https://github.com/NexusMutual/smart-contracts",
   "dependencies": {
-    "@openzeppelin/contract-loader": "^0.6.1",
+    "@openzeppelin/contract-loader": "^0.6.2",
     "@openzeppelin/contracts": "^2.5.1",
     "@openzeppelin/test-helpers": "^0.5.9",
     "@truffle/hdwallet-provider": "^1.0.42",
